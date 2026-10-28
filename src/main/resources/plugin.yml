@@ -2,9 +2,15 @@ name: KnockbackSync
 version: '1.0.0'
 main: me.caseload.knockbacksync.KnockbackSync
 api-version: '1.18'
-authors: [ Caseload, Reloaded ]
+authors: [ Caseload, NothingFlare ]
 description: High-performance knockback synchronization with smoothed ping compensation.
 folia-supported: true
+commands:
+  knockbacksync:
+    description: KnockbackSync main command.
+    aliases: [kbsync]
+    permission: knockbacksync.status.self
+    usage: /<command> [ping|status|toggle|reload]
 permissions:
   knockbacksync.update:
     default: op
@@ -19,4 +25,6 @@ permissions:
   knockbacksync.status.other:
     default: op
   knockbacksync.ping:
+    default: op
+  knockbacksync.reload:
     default: op

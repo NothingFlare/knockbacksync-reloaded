@@ -7,64 +7,69 @@
 
 package me.caseload.knockbacksync.command.subcommand;
 
-import dev.jorel.commandapi.CommandAPICommand;
-import dev.jorel.commandapi.CommandPermission;
-import dev.jorel.commandapi.arguments.PlayerArgument;
 import me.caseload.knockbacksync.KnockbackSync;
+import me.caseload.knockbacksync.command.SubCommand;
 import me.caseload.knockbacksync.manager.ConfigManager;
 import me.caseload.knockbacksync.manager.PlayerData;
 import me.caseload.knockbacksync.manager.PlayerDataManager;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
-public class ToggleSubcommand {
+public class ToggleSubcommand implements SubCommand {
 
-    public CommandAPICommand getCommand() {
-        return new CommandAPICommand("toggle")
-                .withPermission(CommandPermission.NONE)
-                .withOptionalArguments(new PlayerArgument("target"))
-                .executes((sender, args) -> {
-                    ConfigManager configManager = KnockbackSync.getInstance().getConfigManager();
-                    Player target = (Player) args.get("target");
+    @Override
+    public boolean execute(CommandSender sender, String[] args) {
+        ConfigManager configManager = KnockbackSync.getInstance().getConfigManager();
 
-                    if (target == null) {
-                        // Global toggle
-                        if (sender.hasPermission("knockbacksync.toggle.global") || sender.isOp()) {
-                            boolean toggledState = !configManager.isToggled();
-                            configManager.setToggled(toggledState);
+        if (args.length <= 1) {
+            // Global toggle
+            if (sender.hasPermission("knockbacksync.toggle.global") || sender.isOp()) {
+                boolean toggledState = !configManager.isToggled();
+                configManager.setToggled(toggledState);
 
-                            KnockbackSync.getInstance().getConfig().set("enabled", toggledState);
-                            KnockbackSync.getInstance().saveConfig();
+                KnockbackSync.getInstance().getConfig().set("enabled", toggledState);
+                KnockbackSync.getInstance().saveConfig();
 
-                            String message = ChatColor.translateAlternateColorCodes(
-                                    '&',
-                                    toggledState ? configManager.getEnableMessage() : configManager.getDisableMessage()
-                            );
-                            sender.sendMessage(message);
-                        } else {
-                            sender.sendMessage(ChatColor.RED + "You don't have permission to toggle the global setting.");
-                        }
-                    } else {
-                        // Player-specific toggle
-                        if (!configManager.isToggled()) {
-                            sender.sendMessage(ChatColor.RED + "KnockbackSync is currently globally disabled on this server.");
-                            return;
-                        }
+                String message = ChatColor.translateAlternateColorCodes(
+                        '&',
+                        toggledState ? configManager.getEnableMessage() : configManager.getDisableMessage()
+                );
+                sender.sendMessage(message);
+            } else {
+                sender.sendMessage(ChatColor.RED + "You don't have permission to toggle the global setting.");
+            }
+            return true;
+        }
 
-                        boolean isSelf = sender instanceof Player && sender.equals(target);
-                        if (isSelf && (sender.hasPermission("knockbacksync.toggle.self") || sender.isOp())) {
-                            togglePlayerKnockback(target, configManager, sender);
-                        } else if (!isSelf && (sender.hasPermission("knockbacksync.toggle.other") || sender.isOp())) {
-                            togglePlayerKnockback(target, configManager, sender);
-                        } else {
-                            sender.sendMessage(ChatColor.RED + "You don't have permission to toggle knockback for " +
-                                    (isSelf ? "yourself." : "other players."));
-                        }
-                    }
-                });
+        // Player-specific toggle
+        if (!configManager.isToggled()) {
+            sender.sendMessage(ChatColor.RED + "KnockbackSync is currently globally disabled on this server.");
+            return true;
+        }
+
+        Player target = Bukkit.getPlayer(args[1]);
+        if (target == null) {
+            sender.sendMessage(ChatColor.RED + "Player '" + args[1] + "' is not online.");
+            return true;
+        }
+
+        boolean isSelf = sender instanceof Player && sender.equals(target);
+        if (isSelf && (sender.hasPermission("knockbacksync.toggle.self") || sender.isOp())) {
+            togglePlayerKnockback(target, configManager, sender);
+        } else if (!isSelf && (sender.hasPermission("knockbacksync.toggle.other") || sender.isOp())) {
+            togglePlayerKnockback(target, configManager, sender);
+        } else {
+            sender.sendMessage(ChatColor.RED + "You don't have permission to toggle knockback for " +
+                    (isSelf ? "yourself." : "other players."));
+        }
+        return true;
     }
 
     private void togglePlayerKnockback(Player target, ConfigManager configManager, CommandSender sender) {
@@ -92,5 +97,19 @@ public class ToggleSubcommand {
         String message = ChatColor.translateAlternateColorCodes('&', rawMsg).replace("%player%", target.getName());
         sender.sendMessage(message);
     }
-}
 
+    @Override
+    public List<String> tabComplete(CommandSender sender, String[] args) {
+        if (args.length == 2) {
+            List<String> list = new ArrayList<>();
+            String prefix = args[1].toLowerCase();
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (player.getName().toLowerCase().startsWith(prefix)) {
+                    list.add(player.getName());
+                }
+            }
+            return list;
+        }
+        return Collections.emptyList();
+    }
+}

@@ -8,8 +8,6 @@
 package me.caseload.knockbacksync;
 
 import com.github.retrooper.packetevents.PacketEvents;
-import dev.jorel.commandapi.CommandAPI;
-import dev.jorel.commandapi.CommandAPIBukkitConfig;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import io.github.retrooper.packetevents.util.folia.FoliaScheduler;
 import lombok.Getter;
@@ -28,6 +26,7 @@ import me.caseload.knockbacksync.scheduler.FoliaSchedulerAdapter;
 import me.caseload.knockbacksync.scheduler.SchedulerAdapter;
 import me.caseload.knockbacksync.stats.StatsManager;
 import org.bukkit.Bukkit;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.PluginManager;
@@ -52,7 +51,6 @@ public final class KnockbackSync extends JavaPlugin {
     @Override
     public void onLoad() {
         instance = this;
-        CommandAPI.onLoad(new CommandAPIBukkitConfig(this));
         PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
         PacketEvents.getAPI().load();
     }
@@ -67,8 +65,12 @@ public final class KnockbackSync extends JavaPlugin {
         saveDefaultConfig();
         configManager.loadConfig(false);
 
-        CommandAPI.onEnable();
-        new MainCommand().register();
+        MainCommand mainCommand = new MainCommand();
+        PluginCommand cmd = getCommand("knockbacksync");
+        if (cmd != null) {
+            cmd.setExecutor(mainCommand);
+            cmd.setTabCompleter(mainCommand);
+        }
 
         registerListeners(
                 new PlayerDamageListener(),
@@ -103,11 +105,6 @@ public final class KnockbackSync extends JavaPlugin {
         PlayerDataManager.clear();
 
         try {
-            CommandAPI.onDisable();
-        } catch (Throwable ignored) {
-        }
-
-        try {
             PacketEvents.getAPI().terminate();
         } catch (Throwable ignored) {
         }
@@ -126,4 +123,3 @@ public final class KnockbackSync extends JavaPlugin {
         }
     }
 }
-

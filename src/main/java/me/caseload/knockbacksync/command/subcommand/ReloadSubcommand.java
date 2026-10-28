@@ -7,26 +7,37 @@
 
 package me.caseload.knockbacksync.command.subcommand;
 
-import dev.jorel.commandapi.CommandAPICommand;
 import me.caseload.knockbacksync.KnockbackSync;
+import me.caseload.knockbacksync.command.SubCommand;
 import me.caseload.knockbacksync.manager.ConfigManager;
 import org.bukkit.ChatColor;
+import org.bukkit.command.CommandSender;
 
-public class ReloadSubcommand {
+import java.util.Collections;
+import java.util.List;
 
-    public CommandAPICommand getCommand() {
-        return new CommandAPICommand("reload")
-                .withPermission("knockbacksync.reload")
-                .executes((sender, args) -> {
-                    ConfigManager configManager = KnockbackSync.getInstance().getConfigManager();
-                    configManager.loadConfig(true);
+public class ReloadSubcommand implements SubCommand {
 
-                    String reloadMessage = ChatColor.translateAlternateColorCodes(
-                            '&',
-                            configManager.getReloadMessage()
-                    );
-                    sender.sendMessage(reloadMessage);
-                });
+    @Override
+    public boolean execute(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("knockbacksync.reload") && !sender.isOp()) {
+            sender.sendMessage(ChatColor.RED + "You do not have permission to reload KnockbackSync.");
+            return true;
+        }
+
+        ConfigManager configManager = KnockbackSync.getInstance().getConfigManager();
+        configManager.loadConfig(true);
+
+        String reloadMessage = ChatColor.translateAlternateColorCodes(
+                '&',
+                configManager.getReloadMessage()
+        );
+        sender.sendMessage(reloadMessage);
+        return true;
+    }
+
+    @Override
+    public List<String> tabComplete(CommandSender sender, String[] args) {
+        return Collections.emptyList();
     }
 }
-
