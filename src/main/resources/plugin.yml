@@ -5,6 +5,7 @@ api-version: '1.18'
 authors: [ Caseload, NothingFlare ]
 description: High-performance knockback synchronization with smoothed ping compensation.
 folia-supported: true
+depend: [packetevents]
 commands:
   knockbacksync:
     description: KnockbackSync main command.

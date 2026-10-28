@@ -8,8 +8,6 @@
 package me.caseload.knockbacksync;
 
 import com.github.retrooper.packetevents.PacketEvents;
-import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
-import io.github.retrooper.packetevents.util.folia.FoliaScheduler;
 import lombok.Getter;
 import me.caseload.knockbacksync.command.MainCommand;
 import me.caseload.knockbacksync.listener.AttributeChangeListener;
@@ -43,16 +41,23 @@ public final class KnockbackSync extends JavaPlugin {
     private SchedulerAdapter scheduler;
 
     @Getter
-    private final boolean folia = FoliaScheduler.isFolia();
+    private final boolean folia = checkFolia();
 
     @Getter
     private final ConfigManager configManager = new ConfigManager();
 
+    private static boolean checkFolia() {
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            return true;
+        } catch (ClassNotFoundException ignored) {
+            return false;
+        }
+    }
+
     @Override
     public void onLoad() {
         instance = this;
-        PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
-        PacketEvents.getAPI().load();
     }
 
     @Override
@@ -65,9 +70,9 @@ public final class KnockbackSync extends JavaPlugin {
         saveDefaultConfig();
         configManager.loadConfig(false);
 
-        MainCommand mainCommand = new MainCommand();
         PluginCommand cmd = getCommand("knockbacksync");
         if (cmd != null) {
+            MainCommand mainCommand = new MainCommand();
             cmd.setExecutor(mainCommand);
             cmd.setTabCompleter(mainCommand);
         }
@@ -83,12 +88,6 @@ public final class KnockbackSync extends JavaPlugin {
                 new PingReceiveListener()
         );
 
-        PacketEvents.getAPI().getSettings()
-                .checkForUpdates(false)
-                .debug(false);
-
-        PacketEvents.getAPI().init();
-
         // Populate already online players (e.g. if plugin loaded dynamically)
         for (Player player : Bukkit.getOnlinePlayers()) {
             PlayerDataManager.addPlayerData(player.getUniqueId(), new PlayerData(player));
@@ -103,11 +102,6 @@ public final class KnockbackSync extends JavaPlugin {
         configManager.cleanup();
         CombatManager.clear();
         PlayerDataManager.clear();
-
-        try {
-            PacketEvents.getAPI().terminate();
-        } catch (Throwable ignored) {
-        }
 
         LOGGER.info("KnockbackSync Reloaded disabled.");
     }
