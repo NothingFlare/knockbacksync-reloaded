@@ -51,7 +51,7 @@ physics:
 # KnockbackSync-Reloaded
 
 > [!NOTE]
-> This project is a fork of [Axionize/knockback-sync](https://github.com/Axionize/knockback-sync).
+> Этот проект форк [Axionize/knockback-sync](https://github.com/Axionize/knockback-sync).
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
