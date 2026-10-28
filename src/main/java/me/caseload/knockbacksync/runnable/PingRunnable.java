@@ -1,0 +1,39 @@
+/*
+ * Copyright (C) 2026 Axionize
+ * Copyright (C) 2026 NothingFlare (Modifications)
+ *
+ * Licensed under GNU GPLv3.
+ */
+
+package me.caseload.knockbacksync.runnable;
+
+import me.caseload.knockbacksync.KnockbackSync;
+import me.caseload.knockbacksync.manager.CombatManager;
+import me.caseload.knockbacksync.manager.PlayerData;
+import me.caseload.knockbacksync.manager.PlayerDataManager;
+
+import java.util.UUID;
+
+public class PingRunnable implements Runnable {
+
+    @Override
+    public void run() {
+        if (!KnockbackSync.getInstance().getConfigManager().isToggled()) {
+            return;
+        }
+
+        for (UUID uuid : CombatManager.getPlayers()) {
+            PlayerData playerData = PlayerDataManager.getPlayerData(uuid);
+            if (playerData == null || !playerData.getPlayer().isOnline()) {
+                CombatManager.removePlayer(uuid);
+                continue;
+            }
+
+            try {
+                playerData.sendPing();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+}
+

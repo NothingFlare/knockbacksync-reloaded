@@ -1,0 +1,22 @@
+name: KnockbackSync
+version: '1.0.0'
+main: me.caseload.knockbacksync.KnockbackSync
+api-version: '1.18'
+authors: [ Caseload, Reloaded ]
+description: High-performance knockback synchronization with smoothed ping compensation.
+folia-supported: true
+permissions:
+  knockbacksync.update:
+    default: op
+  knockbacksync.toggle.global:
+    default: op
+  knockbacksync.toggle.other:
+    default: op
+  knockbacksync.toggle.self:
+    default: op
+  knockbacksync.status.self:
+    default: true
+  knockbacksync.status.other:
+    default: op
+  knockbacksync.ping:
+    default: op

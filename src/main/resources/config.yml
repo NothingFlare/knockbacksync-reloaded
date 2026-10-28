@@ -1,0 +1,62 @@
+############################################################
+#                                                          #
+#             KnockbackSync Reloaded Config                #
+#                      Version 1.0                         #
+#                                                          #
+############################################################
+
+# Master plugin state.
+# Can be toggled in-game with: /knockbacksync toggle
+enabled: true
+
+# Combat ping runnable configuration.
+# Sends micro ping packets to players actively in combat to accurately track latency.
+runnable:
+  enabled: true       # Whether the combat ping task is enabled
+  interval: 5         # Interval in ticks between pings (5 ticks = 250ms)
+  combat_timer: 30    # Ticks without damage before exiting combat mode (30 ticks = 1.5s)
+
+# Ping compensation and smoothing settings.
+# Designed to eliminate jitter, avoid lag spike anomalies, and reduce over-sensitivity.
+ping:
+  # Base offset (in milliseconds) subtracted from measured ping to account for
+  # server tick phase and network overhead.
+  offset: 25
+
+  # Tolerance grace window (in milliseconds).
+  # Prevents erratic knockback jumps when a player's ping fluctuates by a few milliseconds
+  # near the tick boundary.
+  tolerance: 20
+
+  # Minimum ping threshold (ms).
+  # Players with ping below this threshold already match server timing closely and skip recalculation.
+  min_ping: 20
+
+  # Maximum ping threshold (ms).
+  # Beyond this latency, client state is too desynced for reliable prediction.
+  max_ping: 400
+
+  # Spike filter threshold (ms).
+  # If a measured ping suddenly differs from the running median by more than this threshold,
+  # the outlier is rejected or clamped.
+  spike_threshold: 30
+
+  # Ping history sample window size (number of recent pings used for median smoothing).
+  sample_size: 5
+
+# Ground detection & physics settings
+physics:
+  # Maximum distance to ground (in blocks) to consider player eligible for client-ground prediction.
+  max_ground_distance: 1.35
+
+  # Use ultra-fast direct block voxel checking instead of heavy ray-tracing (recommended).
+  fast_ground_check: true
+
+# Configurable messages
+messages:
+  enable: "&aSuccessfully enabled KnockbackSync globally."
+  disable: "&cSuccessfully disabled KnockbackSync globally."
+  player_enable: "&aSuccessfully enabled KnockbackSync for &e%player%&a."
+  player_disable: "&cSuccessfully disabled KnockbackSync for &e%player%&c."
+  player_ineligible: "&c%player% is ineligible for KnockbackSync (Bedrock / Geyser player)."
+  reload: "&aSuccessfully reloaded KnockbackSync configuration."
