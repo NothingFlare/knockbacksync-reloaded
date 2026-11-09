@@ -7,6 +7,7 @@
 
 package me.caseload.knockbacksync.listener;
 
+import me.caseload.knockbacksync.manager.CombatManager;
 import me.caseload.knockbacksync.manager.PlayerData;
 import me.caseload.knockbacksync.manager.PlayerDataManager;
 import org.bukkit.entity.Player;
@@ -29,6 +30,7 @@ public class PlayerJoinQuitListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
+        CombatManager.removePlayer(uuid);
         PlayerData playerData = PlayerDataManager.removePlayerData(uuid);
         if (playerData != null) {
             playerData.quitCombat(true);

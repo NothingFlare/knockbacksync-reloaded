@@ -30,7 +30,12 @@ public class PlayerKnockbackListener implements Listener {
 
         Player victim = event.getPlayer();
         EntityDamageEvent entityDamageEvent = victim.getLastDamageCause();
-        if (entityDamageEvent == null || entityDamageEvent.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) {
+        if (entityDamageEvent == null) {
+            return;
+        }
+
+        EntityDamageEvent.DamageCause cause = entityDamageEvent.getCause();
+        if (cause != EntityDamageEvent.DamageCause.ENTITY_ATTACK && cause != EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK) {
             return;
         }
 
@@ -48,13 +53,16 @@ public class PlayerKnockbackListener implements Listener {
             return;
         }
 
-        Integer damageTicks = playerData.getLastDamageTicks();
-        if (damageTicks != null && damageTicks > 8) {
+        Double verticalVelocity = playerData.getVerticalVelocity();
+        // Always consume the calculated vertical velocity so it doesn't linger for unrelated velocity events
+        playerData.setVerticalVelocity(null);
+
+        if (verticalVelocity == null) {
             return;
         }
 
-        Double verticalVelocity = playerData.getVerticalVelocity();
-        if (verticalVelocity == null) {
+        Integer damageTicks = playerData.getLastDamageTicks();
+        if (damageTicks != null && damageTicks > 8) {
             return;
         }
 
@@ -65,9 +73,6 @@ public class PlayerKnockbackListener implements Listener {
 
         Vector adjustedVelocity = velocity.clone().setY(verticalVelocity);
         event.setVelocity(adjustedVelocity);
-
-        // Consume the calculated vertical velocity
-        playerData.setVerticalVelocity(null);
     }
 }
 

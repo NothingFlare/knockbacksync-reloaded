@@ -47,13 +47,17 @@ public final class CollisionUtil {
         int startY = (int) Math.floor(minY);
         int bottomY = (int) Math.floor(minY - maxDistance);
 
-        double highestCollisionY = minY - maxDistance;
+        double highestCollisionY = Double.NEGATIVE_INFINITY;
+        boolean foundSolid = false;
 
         for (int y = startY; y >= bottomY; y--) {
             boolean foundSolidInLayer = false;
 
             for (int x = minBlockX; x <= maxBlockX; x++) {
                 for (int z = minBlockZ; z <= maxBlockZ; z++) {
+                    if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+                        continue;
+                    }
                     Block block = world.getBlockAt(x, y, z);
                     Material mat = block.getType();
 
@@ -73,6 +77,7 @@ public final class CollisionUtil {
                     if (blockTop <= minY + 0.001 && blockTop > highestCollisionY) {
                         highestCollisionY = blockTop;
                         foundSolidInLayer = true;
+                        foundSolid = true;
                     }
                 }
             }
@@ -82,6 +87,10 @@ public final class CollisionUtil {
             if (foundSolidInLayer && highestCollisionY >= y) {
                 break;
             }
+        }
+
+        if (!foundSolid) {
+            return -1.0;
         }
 
         return Math.max(0.0, minY - highestCollisionY);
@@ -94,7 +103,7 @@ public final class CollisionUtil {
         BoundingBox bb = player.getBoundingBox();
         Location loc = player.getLocation();
         World world = loc.getWorld();
-        if (world == null) return maxDistance;
+        if (world == null) return -1.0;
 
         double adjustment = 0.01;
         double minX = bb.getMinX() + adjustment;
@@ -103,7 +112,8 @@ public final class CollisionUtil {
         double maxZ = bb.getMaxZ() - adjustment;
         double y = bb.getMinY();
 
-        double minDistance = maxDistance;
+        double minDistance = Double.MAX_VALUE;
+        boolean foundHit = false;
 
         Location[] corners = new Location[]{
                 new Location(world, minX, y, minZ),
@@ -116,13 +126,14 @@ public final class CollisionUtil {
             RayTraceResult result = world.rayTraceBlocks(corner, DOWN_VECTOR, maxDistance, FluidCollisionMode.NEVER, true);
             if (result != null && result.getHitPosition() != null) {
                 double dist = y - result.getHitPosition().getY();
-                if (dist < minDistance) {
+                if (dist >= 0.0 && dist < minDistance) {
                     minDistance = dist;
+                    foundHit = true;
                 }
             }
         }
 
-        return Math.max(0.0, minDistance);
+        return foundHit ? minDistance : -1.0;
     }
 }
 

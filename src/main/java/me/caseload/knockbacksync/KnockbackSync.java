@@ -94,7 +94,7 @@ public final class KnockbackSync extends JavaPlugin {
         }
 
         StatsManager.init();
-        LOGGER.info("KnockbackSync Reloaded v1.0 successfully enabled (Folia: " + folia + ").");
+        LOGGER.info("KnockbackSync Reloaded v1.1 successfully enabled (Folia: " + folia + ").");
     }
 
     @Override

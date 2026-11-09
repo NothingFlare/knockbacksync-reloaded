@@ -8,6 +8,7 @@
 package me.caseload.knockbacksync.manager;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.protocol.ConnectionState;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPing;
@@ -65,17 +66,82 @@ public class PlayerData {
         this.pingHistory = new long[sampleSize];
     }
 
+    public @Nullable User getUser() {
+        if (this.user != null) {
+            return this.user;
+        }
+        return PacketEvents.getAPI().getPlayerManager().getUser(player);
+    }
+
     /**
-     * Sends a ping packet to measure round-trip latency.
+     * Verifies that the underlying network channel is open, active, and in PLAY state.
+     */
+    public boolean isChannelHealthy() {
+        if (!player.isOnline()) {
+            return false;
+        }
+        User u = getUser();
+        if (u == null) {
+            return false;
+        }
+        if (u.getConnectionState() != ConnectionState.PLAY) {
+            return false;
+        }
+        Object channel = u.getChannel();
+        if (channel == null) {
+            return false;
+        }
+        try {
+            if (!PacketEvents.getAPI().getNettyManager().getChannelOperator().isOpen(channel)) {
+                return false;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            java.lang.reflect.Method isActiveMethod = channel.getClass().getMethod("isActive");
+            Object activeResult = isActiveMethod.invoke(channel);
+            if (activeResult instanceof Boolean && !((Boolean) activeResult)) {
+                return false;
+            }
+        } catch (Throwable ignored) {
+        }
+        return true;
+    }
+
+    /**
+     * Sends a ping packet to measure round-trip latency safely.
+     * Includes in-flight throttling and channel health validation to prevent Netty queue overflows.
      */
     public void sendPing() {
-        if (!player.isOnline()) return;
+        if (!isChannelHealthy()) {
+            quitCombat(true);
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        // Remove stale unanswered pings older than 3 seconds
+        pendingPings.entrySet().removeIf(entry -> now - entry.getValue() > 3000L);
+
+        // Throttle: maximum 2 in-flight pings allowed.
+        // Prevents spamming packets into Netty buffer during connection stalls/timeouts.
+        if (pendingPings.size() >= 2) {
+            return;
+        }
 
         int packetId = packetIdGenerator.updateAndGet(id -> (id >= 32700) ? 1 : id + 1);
-        pendingPings.put(packetId, System.currentTimeMillis());
+        pendingPings.put(packetId, now);
 
-        WrapperPlayServerPing packet = new WrapperPlayServerPing(packetId);
-        PacketEvents.getAPI().getPlayerManager().sendPacket(player, packet);
+        try {
+            WrapperPlayServerPing packet = new WrapperPlayServerPing(packetId);
+            User u = getUser();
+            if (u != null) {
+                u.sendPacketSilently(packet);
+            } else {
+                PacketEvents.getAPI().getPlayerManager().sendPacket(player, packet);
+            }
+        } catch (Throwable ignored) {
+            pendingPings.remove(packetId);
+        }
     }
 
     /**
@@ -162,14 +228,22 @@ public class PlayerData {
                 ? CollisionUtil.getFastDistanceToGround(player, maxDist)
                 : CollisionUtil.getRayTraceDistanceToGround(player, maxDist);
 
-        // If distance is essentially zero, the server already considers the player on the ground
-        if (gDist <= 0.001 || gDist > maxDist) {
+        // If distance is negative (no solid ground found), essentially zero, or beyond max distance
+        if (gDist < 0.0 || gDist <= 0.001 || gDist > maxDist) {
             return false;
         }
 
-        int tMax = currentVerticalVelocity > 0 ? MathUtil.calculateTimeToMaxVelocity(currentVerticalVelocity, gravity) : 0;
-        double mH = currentVerticalVelocity > 0 ? MathUtil.calculateDistanceTraveled(currentVerticalVelocity, tMax, gravity) : 0.0;
-        int tFall = MathUtil.calculateFallTime(currentVerticalVelocity, mH + gDist, gravity);
+        int tMax = currentVerticalVelocity > 0.0
+                ? MathUtil.calculateTimeToMaxVelocity(currentVerticalVelocity, gravity)
+                : 0;
+        double mH = currentVerticalVelocity > 0.0
+                ? MathUtil.calculateDistanceTraveled(currentVerticalVelocity, tMax, gravity)
+                : 0.0;
+
+        // If player is moving upward, downward fall starts from apex where velocity is 0.0.
+        // If player is already moving downward (or stationary), fall starts with that downward speed.
+        double fallStartVelocity = currentVerticalVelocity > 0.0 ? 0.0 : -currentVerticalVelocity;
+        int tFall = MathUtil.calculateFallTime(fallStartVelocity, mH + gDist, gravity);
 
         if (tFall == -1) {
             return false;
@@ -178,7 +252,7 @@ public class PlayerData {
         // Required time in ms for the client to have finished falling to the ground
         long requiredTimeMs = (long) Math.ceil((tMax + tFall) * 50.0);
 
-        return effectivePing >= requiredTimeMs && gDist <= maxDist;
+        return effectivePing >= requiredTimeMs;
     }
 
     /**
@@ -189,16 +263,20 @@ public class PlayerData {
 
         if (!attacker.isSprinting()) {
             yAxis = 0.36080000519752503;
-            AttributeInstance knockbackAttr = player.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE);
-            if (knockbackAttr != null) {
-                double knockbackResistance = knockbackAttr.getValue();
-                double resistanceFactor = 0.04000000119 * knockbackResistance * 10.0;
-                yAxis -= resistanceFactor;
-            }
         }
 
         if (attacker.getInventory().getItemInMainHand().getEnchantmentLevel(Enchantment.KNOCKBACK) > 0) {
             yAxis = 0.4;
+        }
+
+        // Apply knockback resistance uniformly
+        AttributeInstance knockbackAttr = player.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE);
+        if (knockbackAttr != null) {
+            double knockbackResistance = knockbackAttr.getValue();
+            if (knockbackResistance > 0.0) {
+                double factor = MathUtil.clamp(1.0 - knockbackResistance, 0.0, 1.0);
+                yAxis *= factor;
+            }
         }
 
         return yAxis;

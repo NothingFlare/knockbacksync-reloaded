@@ -17,43 +17,46 @@ public final class MathUtil {
     }
 
     /**
-     * Calculates the distance traveled upward with deceleration.
+     * Calculates the distance traveled upward with deceleration until apex or specified ticks.
      */
-    public static double calculateDistanceTraveled(double velocity, int time, double gravity) {
+    public static double calculateDistanceTraveled(double initialUpwardVelocity, int time, double gravity) {
+        if (initialUpwardVelocity <= 0.0 || time <= 0) {
+            return 0.0;
+        }
         double totalDistance = 0.0;
-        double currentVelocity = velocity;
+        double currentVelocity = initialUpwardVelocity;
 
-        for (int i = 0; i < time; i++) {
+        for (int i = 0; i < time && currentVelocity > 0.0; i++) {
             totalDistance += currentVelocity;
             currentVelocity = (currentVelocity - gravity) * DRAG;
-            if (currentVelocity > TERMINAL_VELOCITY) {
-                currentVelocity = TERMINAL_VELOCITY;
-            }
         }
 
         return totalDistance;
     }
 
     /**
-     * Calculates the number of ticks required to fall a given distance under gravity.
+     * Calculates the number of ticks required to fall a given distance under gravity and drag.
+     * Uses discrete Minecraft simulation.
      * Returns -1 if it exceeds MAX_TICKS limit.
      */
-    public static int calculateFallTime(double initialVelocity, double distance, double gravity) {
-        double velocity = Math.abs(initialVelocity);
+    public static int calculateFallTime(double initialDownwardVelocity, double distance, double gravity) {
+        if (distance <= 0.0) {
+            return 0;
+        }
+        double velocity = Math.max(0.0, initialDownwardVelocity);
         double remainingDistance = distance;
         int ticks = 0;
 
         while (remainingDistance > 0.0) {
-            if (ticks > MAX_TICKS) {
+            if (ticks >= MAX_TICKS) {
                 return -1;
             }
 
-            velocity += gravity;
+            remainingDistance -= velocity;
+            velocity = (velocity + gravity) * DRAG;
             if (velocity > TERMINAL_VELOCITY) {
                 velocity = TERMINAL_VELOCITY;
             }
-            velocity *= DRAG;
-            remainingDistance -= velocity;
             ticks++;
         }
 
@@ -61,20 +64,19 @@ public final class MathUtil {
     }
 
     /**
-     * Calculates the time in ticks to reach maximum height from vertical velocity.
+     * Calculates the time in ticks to reach apex (vertical velocity <= 0) using exact Minecraft discrete physics.
      */
-    public static int calculateTimeToMaxVelocity(double targetVerticalVelocity, double gravity) {
-        double a = -gravity * DRAG;
-        double b = gravity + TERMINAL_VELOCITY * DRAG;
-        double c = -2.0 * targetVerticalVelocity;
-
-        double discriminant = b * b - 4.0 * a * c;
-        if (discriminant < 0.0) {
+    public static int calculateTimeToMaxVelocity(double initialUpwardVelocity, double gravity) {
+        if (initialUpwardVelocity <= 0.0) {
             return 0;
         }
-
-        double positiveRoot = (-b + Math.sqrt(discriminant)) / (2.0 * a);
-        return (int) Math.ceil(positiveRoot * 20.0);
+        double v = initialUpwardVelocity;
+        int ticks = 0;
+        while (v > 0.0 && ticks < MAX_TICKS) {
+            v = (v - gravity) * DRAG;
+            ticks++;
+        }
+        return ticks;
     }
 
     public static double clamp(double num, double min, double max) {

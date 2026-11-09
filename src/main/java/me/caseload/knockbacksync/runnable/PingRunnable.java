@@ -24,8 +24,11 @@ public class PingRunnable implements Runnable {
 
         for (UUID uuid : CombatManager.getPlayers()) {
             PlayerData playerData = PlayerDataManager.getPlayerData(uuid);
-            if (playerData == null || !playerData.getPlayer().isOnline()) {
+            if (playerData == null || !playerData.isChannelHealthy()) {
                 CombatManager.removePlayer(uuid);
+                if (playerData != null) {
+                    playerData.quitCombat(true);
+                }
                 continue;
             }
 
