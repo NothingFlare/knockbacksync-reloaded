@@ -8,6 +8,7 @@
 package me.caseload.knockbacksync.listener;
 
 import me.caseload.knockbacksync.KnockbackSync;
+import me.caseload.knockbacksync.manager.CombatManager;
 import me.caseload.knockbacksync.manager.PlayerData;
 import me.caseload.knockbacksync.manager.PlayerDataManager;
 import org.bukkit.entity.Entity;
@@ -16,6 +17,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 
 public class PlayerDamageListener implements Listener {
 
@@ -46,6 +48,16 @@ public class PlayerDamageListener implements Listener {
 
         if (!KnockbackSync.getInstance().getConfigManager().isRunnableEnabled()) {
             playerData.sendPing();
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player victim = event.getEntity();
+        CombatManager.removePlayer(victim.getUniqueId());
+        PlayerData playerData = PlayerDataManager.getPlayerData(victim.getUniqueId());
+        if (playerData != null) {
+            playerData.quitCombat(true);
         }
     }
 }

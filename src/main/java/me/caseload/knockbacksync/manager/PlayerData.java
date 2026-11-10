@@ -26,6 +26,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,10 +75,10 @@ public class PlayerData {
     }
 
     /**
-     * Verifies that the underlying network channel is open, active, and in PLAY state.
+     * Verifies that the underlying network channel is open, active, writable, and in PLAY state.
      */
     public boolean isChannelHealthy() {
-        if (!player.isOnline()) {
+        if (!player.isOnline() || player.isDead()) {
             return false;
         }
         User u = getUser();
@@ -98,14 +99,86 @@ public class PlayerData {
         } catch (Throwable ignored) {
         }
         try {
-            java.lang.reflect.Method isActiveMethod = channel.getClass().getMethod("isActive");
+            Method isActiveMethod = channel.getClass().getMethod("isActive");
             Object activeResult = isActiveMethod.invoke(channel);
             if (activeResult instanceof Boolean && !((Boolean) activeResult)) {
                 return false;
             }
         } catch (Throwable ignored) {
         }
+        try {
+            Method isWritableMethod = channel.getClass().getMethod("isWritable");
+            Object writableResult = isWritableMethod.invoke(channel);
+            if (writableResult instanceof Boolean && !((Boolean) writableResult)) {
+                return false;
+            }
+        } catch (Throwable ignored) {
+        }
         return true;
+    }
+
+    private static volatile boolean nettyReflectionInitialized = false;
+    private static Method pipelineMethod;
+    private static Method contextMethod;
+    private static Method voidPromiseMethod;
+    private static Method writeAndFlushMethod;
+
+    private static void initNettyReflection(Object channel) {
+        if (nettyReflectionInitialized || channel == null) return;
+        synchronized (PlayerData.class) {
+            if (nettyReflectionInitialized) return;
+            try {
+                pipelineMethod = channel.getClass().getMethod("pipeline");
+                Object pipeline = pipelineMethod.invoke(channel);
+                contextMethod = pipeline.getClass().getMethod("context", String.class);
+                Object ctx = contextMethod.invoke(pipeline, PacketEvents.ENCODER_NAME);
+                if (ctx != null) {
+                    voidPromiseMethod = ctx.getClass().getMethod("voidPromise");
+                    for (Method m : ctx.getClass().getMethods()) {
+                        if (m.getName().equals("writeAndFlush") && m.getParameterCount() == 2) {
+                            writeAndFlushMethod = m;
+                            break;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                nettyReflectionInitialized = true;
+            }
+        }
+    }
+
+    /**
+     * Sends packet using Netty's voidPromise.
+     * When voidPromise is used, Netty skips ChannelOutboundBuffer.failFlushed error logging entirely,
+     * ensuring that no StacklessClosedChannelException warnings appear when a socket drops.
+     */
+    private void sendPingPacketSafely(WrapperPlayServerPing packet) {
+        User u = getUser();
+        if (u == null) return;
+
+        Object channel = u.getChannel();
+        if (channel == null) return;
+
+        initNettyReflection(channel);
+
+        if (pipelineMethod != null && contextMethod != null && voidPromiseMethod != null && writeAndFlushMethod != null) {
+            try {
+                Object pipeline = pipelineMethod.invoke(channel);
+                Object ctx = contextMethod.invoke(pipeline, PacketEvents.ENCODER_NAME);
+                if (ctx != null) {
+                    Object voidPromise = voidPromiseMethod.invoke(ctx);
+                    writeAndFlushMethod.invoke(ctx, packet, voidPromise);
+                    return;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
+        try {
+            u.sendPacketSilently(packet);
+        } catch (Throwable ignored) {
+        }
     }
 
     /**
@@ -133,12 +206,7 @@ public class PlayerData {
 
         try {
             WrapperPlayServerPing packet = new WrapperPlayServerPing(packetId);
-            User u = getUser();
-            if (u != null) {
-                u.sendPacketSilently(packet);
-            } else {
-                PacketEvents.getAPI().getPlayerManager().sendPacket(player, packet);
-            }
+            sendPingPacketSafely(packet);
         } catch (Throwable ignored) {
             pendingPings.remove(packetId);
         }

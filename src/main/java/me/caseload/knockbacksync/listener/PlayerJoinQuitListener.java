@@ -15,6 +15,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerKickEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.UUID;
@@ -27,8 +28,18 @@ public class PlayerJoinQuitListener implements Listener {
         PlayerDataManager.addPlayerData(player.getUniqueId(), new PlayerData(player));
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        CombatManager.removePlayer(uuid);
+        PlayerData playerData = PlayerDataManager.removePlayerData(uuid);
+        if (playerData != null) {
+            playerData.quitCombat(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerKick(PlayerKickEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         CombatManager.removePlayer(uuid);
         PlayerData playerData = PlayerDataManager.removePlayerData(uuid);
