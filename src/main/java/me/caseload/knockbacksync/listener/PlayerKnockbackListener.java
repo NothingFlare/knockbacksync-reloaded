@@ -53,6 +53,11 @@ public class PlayerKnockbackListener implements Listener {
             return;
         }
 
+        if (!playerData.isPendingKnockback()) {
+            return;
+        }
+        playerData.setPendingKnockback(false);
+
         Double verticalVelocity = playerData.getVerticalVelocity();
         // Always consume the calculated vertical velocity so it doesn't linger for unrelated velocity events
         playerData.setVerticalVelocity(null);

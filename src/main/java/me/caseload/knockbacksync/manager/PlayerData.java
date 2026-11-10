@@ -15,7 +15,6 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPi
 import lombok.Getter;
 import lombok.Setter;
 import me.caseload.knockbacksync.KnockbackSync;
-import me.caseload.knockbacksync.scheduler.AbstractTaskHandle;
 import me.caseload.knockbacksync.util.CollisionUtil;
 import me.caseload.knockbacksync.util.MathUtil;
 import org.bukkit.Material;
@@ -27,9 +26,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Getter
@@ -38,24 +34,34 @@ public class PlayerData {
     private final Player player;
     private final User user;
 
-    private final Map<Integer, Long> pendingPings = new ConcurrentHashMap<>(4);
     private final AtomicInteger packetIdGenerator = new AtomicInteger(1);
 
-    @Nullable
-    private AbstractTaskHandle combatTask;
+    // In-flight ping tracking (primitive, zero allocation, high-resolution nanoTime)
+    private static final long PING_TIMEOUT_NANOS = 3_000_000_000L; // 3 seconds timeout
+    private volatile int inFlightId1 = -1;
+    private volatile long inFlightTime1 = 0L;
+    private volatile int inFlightId2 = -1;
+    private volatile long inFlightTime2 = 0L;
 
-    // Ping smoothing ring buffer
-    private final long[] pingHistory;
+    // Ping smoothing ring buffer & scratch buffer (zero allocations on median calculation)
+    private long[] pingHistory;
+    private long[] sortBuffer;
     private int historyIndex = 0;
     private int samplesCount = 0;
-    private volatile long lastPing = -1;
-    private volatile long cachedMedianPing = -1;
+    private volatile long lastPing = -1L;
+    private volatile long cachedMedianPing = -1L;
+
+    // Combat tracking via timestamp (eliminates per-hit scheduler task churn)
+    private volatile long combatExpiryTime = 0L;
 
     @Nullable @Setter
     private Double verticalVelocity;
 
     @Nullable @Setter
     private Integer lastDamageTicks;
+
+    @Setter @Getter
+    private volatile boolean pendingKnockback = false;
 
     @Setter
     private double gravity = 0.08;
@@ -65,6 +71,19 @@ public class PlayerData {
         this.user = PacketEvents.getAPI().getPlayerManager().getUser(player);
         int sampleSize = KnockbackSync.getInstance().getConfigManager().getSampleSize();
         this.pingHistory = new long[sampleSize];
+        this.sortBuffer = new long[sampleSize];
+
+        // Seed initial latency to eliminate cold-start delay
+        long initialPing = 20L;
+        try {
+            initialPing = Math.max(1L, player.getPing());
+        } catch (Throwable ignored) {
+        }
+        this.cachedMedianPing = initialPing;
+        this.lastPing = initialPing;
+        this.pingHistory[0] = initialPing;
+        this.historyIndex = 1;
+        this.samplesCount = 1;
     }
 
     public @Nullable User getUser() {
@@ -72,6 +91,68 @@ public class PlayerData {
             return this.user;
         }
         return PacketEvents.getAPI().getPlayerManager().getUser(player);
+    }
+
+    /**
+     * Reinitializes smoothing buffers if sample size changed during reload.
+     */
+    public synchronized void resizeBuffer(int newSize) {
+        if (pingHistory.length == newSize) return;
+        long[] newHistory = new long[newSize];
+        long[] newSort = new long[newSize];
+        int countToCopy = Math.min(samplesCount, newSize);
+        System.arraycopy(pingHistory, 0, newHistory, 0, countToCopy);
+        this.pingHistory = newHistory;
+        this.sortBuffer = newSort;
+        this.historyIndex = countToCopy % newSize;
+        this.samplesCount = countToCopy;
+    }
+
+    /**
+     * Registers an in-flight ping packet in primitive slots. Returns true if accepted, false if throttled.
+     */
+    public synchronized boolean registerInFlightPing(int packetId, long nowNanos) {
+        if (inFlightId1 != -1 && (nowNanos - inFlightTime1 > PING_TIMEOUT_NANOS)) {
+            inFlightId1 = -1;
+        }
+        if (inFlightId2 != -1 && (nowNanos - inFlightTime2 > PING_TIMEOUT_NANOS)) {
+            inFlightId2 = -1;
+        }
+
+        if (inFlightId1 == -1) {
+            inFlightId1 = packetId;
+            inFlightTime1 = nowNanos;
+            return true;
+        } else if (inFlightId2 == -1) {
+            inFlightId2 = packetId;
+            inFlightTime2 = nowNanos;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Resolves in-flight ping and returns elapsed RTT in milliseconds, or -1 if not found.
+     */
+    public synchronized long removeInFlightPing(int packetId) {
+        long nowNanos = System.nanoTime();
+        if (inFlightId1 == packetId) {
+            long send = inFlightTime1;
+            inFlightId1 = -1;
+            return Math.max(1L, (nowNanos - send) / 1_000_000L);
+        } else if (inFlightId2 == packetId) {
+            long send = inFlightTime2;
+            inFlightId2 = -1;
+            return Math.max(1L, (nowNanos - send) / 1_000_000L);
+        }
+        return -1L;
+    }
+
+    public synchronized void clearInFlightPings() {
+        inFlightId1 = -1;
+        inFlightTime1 = 0L;
+        inFlightId2 = -1;
+        inFlightTime2 = 0L;
     }
 
     /**
@@ -182,52 +263,46 @@ public class PlayerData {
     }
 
     /**
-     * Sends a ping packet to measure round-trip latency safely.
-     * Includes in-flight throttling and channel health validation to prevent Netty queue overflows.
+     * Sends a ping packet to measure round-trip latency safely with high-precision monotonic timing.
+     * Includes in-flight throttling and channel health validation.
      */
     public void sendPing() {
         if (!isChannelHealthy()) {
-            quitCombat(true);
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        // Remove stale unanswered pings older than 3 seconds
-        pendingPings.entrySet().removeIf(entry -> now - entry.getValue() > 3000L);
-
-        // Throttle: maximum 2 in-flight pings allowed.
-        // Prevents spamming packets into Netty buffer during connection stalls/timeouts.
-        if (pendingPings.size() >= 2) {
+            quitCombat();
             return;
         }
 
         int packetId = packetIdGenerator.updateAndGet(id -> (id >= 32700) ? 1 : id + 1);
-        pendingPings.put(packetId, now);
+        long nowNanos = System.nanoTime();
+
+        // Throttle check
+        if (!registerInFlightPing(packetId, nowNanos)) {
+            return;
+        }
 
         try {
             WrapperPlayServerPing packet = new WrapperPlayServerPing(packetId);
             sendPingPacketSafely(packet);
         } catch (Throwable ignored) {
-            pendingPings.remove(packetId);
+            removeInFlightPing(packetId);
         }
     }
 
     /**
-     * Records a new ping sample with spike filtering and updates the smoothed median.
+     * Records a new ping sample with outlier filtering and updates running median without memory allocations.
      */
     public synchronized void recordPingSample(long rawRtt) {
         ConfigManager config = KnockbackSync.getInstance().getConfigManager();
         long spikeThreshold = config.getSpikeThreshold();
 
         long sample = rawRtt;
-        if (samplesCount > 0 && lastPing > 0) {
-            long diff = sample - lastPing;
-            if (diff > spikeThreshold) {
-                // Lag spike detected: clamp to lastPing + threshold / 2 to avoid erratic jumps
-                sample = lastPing + (spikeThreshold / 2);
-            } else if (-diff > spikeThreshold) {
-                sample = lastPing - (spikeThreshold / 2);
-            }
+        long baseline = cachedMedianPing > 0 ? cachedMedianPing : (lastPing > 0 ? lastPing : sample);
+
+        long diff = sample - baseline;
+        if (diff > spikeThreshold) {
+            sample = baseline + (spikeThreshold / 2);
+        } else if (-diff > spikeThreshold) {
+            sample = baseline - (spikeThreshold / 2);
         }
 
         lastPing = sample;
@@ -237,10 +312,18 @@ public class PlayerData {
             samplesCount++;
         }
 
-        // Compute median from valid samples
-        long[] copy = Arrays.copyOf(pingHistory, samplesCount);
-        Arrays.sort(copy);
-        cachedMedianPing = copy[samplesCount / 2];
+        // Fast zero-allocation insertion sort for running median
+        System.arraycopy(pingHistory, 0, sortBuffer, 0, samplesCount);
+        for (int i = 1; i < samplesCount; i++) {
+            long key = sortBuffer[i];
+            int j = i - 1;
+            while (j >= 0 && sortBuffer[j] > key) {
+                sortBuffer[j + 1] = sortBuffer[j];
+                j--;
+            }
+            sortBuffer[j + 1] = key;
+        }
+        cachedMedianPing = sortBuffer[samplesCount / 2];
     }
 
     /**
@@ -351,28 +434,25 @@ public class PlayerData {
     }
 
     public boolean isInCombat() {
-        return combatTask != null;
+        return System.currentTimeMillis() < combatExpiryTime;
     }
 
     public void updateCombat() {
-        if (isInCombat() && combatTask != null) {
-            combatTask.cancel();
-        }
-
+        boolean wasInCombat = isInCombat();
+        long durationMs = KnockbackSync.getInstance().getConfigManager().getCombatTimer() * 50L;
+        combatExpiryTime = System.currentTimeMillis() + durationMs;
         CombatManager.addPlayer(player.getUniqueId());
-        combatTask = KnockbackSync.getInstance().getScheduler().runTaskLaterAsynchronously(
-                () -> quitCombat(false),
-                KnockbackSync.getInstance().getConfigManager().getCombatTimer()
-        );
+
+        // Instant responsiveness: if entering combat, send an immediate ping
+        if (!wasInCombat) {
+            sendPing();
+        }
     }
 
-    public void quitCombat(boolean cancelTask) {
-        if (cancelTask && combatTask != null) {
-            combatTask.cancel();
-        }
-        combatTask = null;
+    public void quitCombat() {
+        combatExpiryTime = 0L;
         CombatManager.removePlayer(player.getUniqueId());
-        pendingPings.clear();
+        clearInFlightPings();
     }
 
     public ClientVersion getClientVersion() {
@@ -387,4 +467,3 @@ public class PlayerData {
         }
     }
 }
-

@@ -10,7 +10,7 @@ A high-performance, low-jitter knockback synchronization plugin for Minecraft se
 ## Installation
 
 1. Install [PacketEvents](https://github.com/retrooper/packetevents) (version 2.7.0+ / 2.13.0+) into your `plugins/` folder.
-2. Place `KnockbackSync-1.1.jar` into your `plugins/` directory on Paper / Purpur / Spigot / Folia / CraftBukkit (supports Java 17+).
+2. Place `KnockbackSync-1.2.jar` into your `plugins/` directory on Paper / Purpur / Spigot / Folia / CraftBukkit (supports Java 17+).
 3. Start or restart the server to generate the `config.yml`.
 4. To reload the configuration, use `/knockbacksync reload` (available to OP / console).
 
@@ -61,7 +61,7 @@ physics:
 ## Установка
 
 1. Установите [PacketEvents](https://github.com/retrooper/packetevents) (версия 2.7.0+ / 2.13.0+) в папку `plugins/`.
-2. Поместите `KnockbackSync-1.1.jar` в директорию `plugins/` на Paper / Purpur / Spigot / Folia / CraftBukkit (требуется Java 17+).
+2. Поместите `KnockbackSync-1.2.jar` в директорию `plugins/` на Paper / Purpur / Spigot / Folia / CraftBukkit (требуется Java 17+).
 3. Запустите или перезапустите сервер для генерации `config.yml`.
 4. Для перезагрузки конфигурации используйте `/knockbacksync reload` (доступно для OP / консоли).
 

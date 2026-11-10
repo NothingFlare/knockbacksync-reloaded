@@ -87,7 +87,7 @@ public class ToggleSubcommand implements SubCommand {
         if (hasPlayerData) {
             PlayerData data = PlayerDataManager.removePlayerData(uuid);
             if (data != null) {
-                data.quitCombat(true);
+                data.quitCombat();
             }
         } else {
             PlayerDataManager.addPlayerData(uuid, new PlayerData(target));

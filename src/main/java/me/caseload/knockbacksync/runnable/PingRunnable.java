@@ -22,12 +22,13 @@ public class PingRunnable implements Runnable {
             return;
         }
 
+        long now = System.currentTimeMillis();
         for (UUID uuid : CombatManager.getPlayers()) {
             PlayerData playerData = PlayerDataManager.getPlayerData(uuid);
-            if (playerData == null || !playerData.isChannelHealthy()) {
+            if (playerData == null || !playerData.isChannelHealthy() || now >= playerData.getCombatExpiryTime()) {
                 CombatManager.removePlayer(uuid);
                 if (playerData != null) {
-                    playerData.quitCombat(true);
+                    playerData.quitCombat();
                 }
                 continue;
             }

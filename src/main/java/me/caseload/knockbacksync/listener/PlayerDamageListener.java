@@ -44,6 +44,7 @@ public class PlayerDamageListener implements Listener {
 
         playerData.setVerticalVelocity(playerData.calculateVerticalVelocity(attacker));
         playerData.setLastDamageTicks(victim.getNoDamageTicks());
+        playerData.setPendingKnockback(true);
         playerData.updateCombat();
 
         if (!KnockbackSync.getInstance().getConfigManager().isRunnableEnabled()) {
@@ -57,7 +58,7 @@ public class PlayerDamageListener implements Listener {
         CombatManager.removePlayer(victim.getUniqueId());
         PlayerData playerData = PlayerDataManager.getPlayerData(victim.getUniqueId());
         if (playerData != null) {
-            playerData.quitCombat(true);
+            playerData.quitCombat();
         }
     }
 }

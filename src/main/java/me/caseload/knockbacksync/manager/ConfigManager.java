@@ -12,7 +12,9 @@ import lombok.Setter;
 import me.caseload.knockbacksync.KnockbackSync;
 import me.caseload.knockbacksync.runnable.PingRunnable;
 import me.caseload.knockbacksync.scheduler.AbstractTaskHandle;
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.Player;
 
 @Getter
 @Setter
@@ -73,6 +75,15 @@ public class ConfigManager {
         maxPing = config.getLong("ping.max_ping", 400L);
         spikeThreshold = config.getLong("ping.spike_threshold", config.getLong("spike_threshold", 30L));
         sampleSize = Math.max(3, Math.min(15, config.getInt("ping.sample_size", 5)));
+
+        if (reloadConfig) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                PlayerData data = PlayerDataManager.getPlayerData(player.getUniqueId());
+                if (data != null) {
+                    data.resizeBuffer(sampleSize);
+                }
+            }
+        }
 
         // Physics settings
         maxGroundDistance = config.getDouble("physics.max_ground_distance", 1.35);

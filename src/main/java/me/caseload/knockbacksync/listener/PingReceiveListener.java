@@ -39,13 +39,10 @@ public class PingReceiveListener extends PacketListenerAbstract {
         }
 
         int packetId = new WrapperPlayClientPong(event).getId();
-        Long sendTime = playerData.getPendingPings().remove(packetId);
-        if (sendTime == null) {
-            return;
+        long rawPing = playerData.removeInFlightPing(packetId);
+        if (rawPing >= 0) {
+            playerData.recordPingSample(rawPing);
         }
-
-        long rawPing = System.currentTimeMillis() - sendTime;
-        playerData.recordPingSample(rawPing);
     }
 }
 

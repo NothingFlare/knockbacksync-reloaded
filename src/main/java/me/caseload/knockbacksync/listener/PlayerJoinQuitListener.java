@@ -34,7 +34,7 @@ public class PlayerJoinQuitListener implements Listener {
         CombatManager.removePlayer(uuid);
         PlayerData playerData = PlayerDataManager.removePlayerData(uuid);
         if (playerData != null) {
-            playerData.quitCombat(true);
+            playerData.quitCombat();
         }
     }
 
@@ -44,7 +44,7 @@ public class PlayerJoinQuitListener implements Listener {
         CombatManager.removePlayer(uuid);
         PlayerData playerData = PlayerDataManager.removePlayerData(uuid);
         if (playerData != null) {
-            playerData.quitCombat(true);
+            playerData.quitCombat();
         }
     }
 }
