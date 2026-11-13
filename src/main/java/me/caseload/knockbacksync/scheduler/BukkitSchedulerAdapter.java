@@ -22,32 +22,31 @@ public class BukkitSchedulerAdapter implements SchedulerAdapter {
 
     @Override
     public AbstractTaskHandle runTask(Runnable task) {
-        return new AbstractTaskHandle(scheduler.runTask(plugin, task));
+        return new BukkitTaskHandle(scheduler.runTask(plugin, task));
     }
 
     @Override
     public AbstractTaskHandle runTaskAsynchronously(Runnable task) {
-        return new AbstractTaskHandle(scheduler.runTaskAsynchronously(plugin, task));
+        return new BukkitTaskHandle(scheduler.runTaskAsynchronously(plugin, task));
     }
 
     @Override
     public AbstractTaskHandle runTaskLater(Runnable task, long delayTicks) {
-        return new AbstractTaskHandle(scheduler.runTaskLater(plugin, task, delayTicks));
+        return new BukkitTaskHandle(scheduler.runTaskLater(plugin, task, delayTicks));
     }
 
     @Override
     public AbstractTaskHandle runTaskTimer(Runnable task, long delayTicks, long periodTicks) {
-        return new AbstractTaskHandle(scheduler.runTaskTimer(plugin, task, delayTicks, periodTicks));
+        return new BukkitTaskHandle(scheduler.runTaskTimer(plugin, task, delayTicks, periodTicks));
     }
 
     @Override
     public AbstractTaskHandle runTaskLaterAsynchronously(Runnable task, long delayTicks) {
-        return new AbstractTaskHandle(scheduler.runTaskLaterAsynchronously(plugin, task, delayTicks));
+        return new BukkitTaskHandle(scheduler.runTaskLaterAsynchronously(plugin, task, delayTicks));
     }
 
     @Override
     public AbstractTaskHandle runTaskTimerAsynchronously(Runnable task, long delayTicks, long periodTicks) {
-        return new AbstractTaskHandle(scheduler.runTaskTimerAsynchronously(plugin, task, delayTicks, periodTicks));
+        return new BukkitTaskHandle(scheduler.runTaskTimerAsynchronously(plugin, task, delayTicks, periodTicks));
     }
 }
-

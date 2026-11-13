@@ -9,12 +9,17 @@ package me.caseload.knockbacksync.listener;
 
 import com.github.retrooper.packetevents.event.PacketListenerAbstract;
 import com.github.retrooper.packetevents.event.PacketReceiveEvent;
+import com.github.retrooper.packetevents.event.UserDisconnectEvent;
 import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.wrapper.play.client.WrapperPlayClientPong;
 import me.caseload.knockbacksync.KnockbackSync;
+import me.caseload.knockbacksync.manager.CombatManager;
 import me.caseload.knockbacksync.manager.PlayerData;
 import me.caseload.knockbacksync.manager.PlayerDataManager;
 import org.bukkit.entity.Player;
+
+import java.util.UUID;
 
 public class PingReceiveListener extends PacketListenerAbstract {
 
@@ -44,5 +49,22 @@ public class PingReceiveListener extends PacketListenerAbstract {
             playerData.recordPingSample(rawPing);
         }
     }
-}
 
+    @Override
+    public void onUserDisconnect(UserDisconnectEvent event) {
+        User user = event.getUser();
+        if (user == null) {
+            return;
+        }
+        UUID uuid = user.getUUID();
+        if (uuid == null) {
+            return;
+        }
+
+        CombatManager.removePlayer(uuid);
+        PlayerData playerData = PlayerDataManager.removePlayerData(uuid);
+        if (playerData != null) {
+            playerData.quitCombat();
+        }
+    }
+}

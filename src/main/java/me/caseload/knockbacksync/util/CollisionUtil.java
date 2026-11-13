@@ -38,6 +38,9 @@ public final class CollisionUtil {
         double minY = bb.getMinY();
         World world = player.getWorld();
 
+        int minHeight = world.getMinHeight();
+        int maxHeight = world.getMaxHeight();
+
         // 0.001 margin prevents checking neighboring blocks if player is exactly on block border
         int minBlockX = (int) Math.floor(bb.getMinX() + 0.001);
         int maxBlockX = (int) Math.floor(bb.getMaxX() - 0.001);
@@ -46,6 +49,13 @@ public final class CollisionUtil {
 
         int startY = (int) Math.floor(minY);
         int bottomY = (int) Math.floor(minY - maxDistance);
+
+        if (startY < minHeight || bottomY >= maxHeight) {
+            return -1.0;
+        }
+
+        startY = Math.min(startY, maxHeight - 1);
+        bottomY = Math.max(bottomY, minHeight);
 
         double highestCollisionY = Double.NEGATIVE_INFINITY;
         boolean foundSolid = false;
@@ -136,4 +146,3 @@ public final class CollisionUtil {
         return foundHit ? minDistance : -1.0;
     }
 }
-

@@ -8,6 +8,7 @@
 package me.caseload.knockbacksync;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListenerCommon;
 import lombok.Getter;
 import me.caseload.knockbacksync.command.MainCommand;
 import me.caseload.knockbacksync.listener.AttributeChangeListener;
@@ -46,6 +47,9 @@ public final class KnockbackSync extends JavaPlugin {
     @Getter
     private final ConfigManager configManager = new ConfigManager();
 
+    private PacketListenerCommon attributeListener;
+    private PacketListenerCommon pingReceiveListener;
+
     private static boolean checkFolia() {
         try {
             Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
@@ -83,9 +87,12 @@ public final class KnockbackSync extends JavaPlugin {
                 new PlayerJoinQuitListener()
         );
 
+        attributeListener = new AttributeChangeListener();
+        pingReceiveListener = new PingReceiveListener();
+
         PacketEvents.getAPI().getEventManager().registerListeners(
-                new AttributeChangeListener(),
-                new PingReceiveListener()
+                attributeListener,
+                pingReceiveListener
         );
 
         // Populate already online players (e.g. if plugin loaded dynamically)
@@ -94,7 +101,7 @@ public final class KnockbackSync extends JavaPlugin {
         }
 
         StatsManager.init();
-        LOGGER.info("KnockbackSync Reloaded v1.2 successfully enabled (Folia: " + folia + ").");
+        LOGGER.info("KnockbackSync Reloaded v1.3 successfully enabled (Folia: " + folia + ").");
     }
 
     @Override
@@ -102,6 +109,20 @@ public final class KnockbackSync extends JavaPlugin {
         configManager.cleanup();
         CombatManager.clear();
         PlayerDataManager.clear();
+
+        if (attributeListener != null || pingReceiveListener != null) {
+            try {
+                if (attributeListener != null) {
+                    PacketEvents.getAPI().getEventManager().unregisterListener(attributeListener);
+                    attributeListener = null;
+                }
+                if (pingReceiveListener != null) {
+                    PacketEvents.getAPI().getEventManager().unregisterListener(pingReceiveListener);
+                    pingReceiveListener = null;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
 
         LOGGER.info("KnockbackSync Reloaded disabled.");
     }

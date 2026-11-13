@@ -62,6 +62,9 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             return list;
         } else if (args.length > 1) {
             String subName = args[0].toLowerCase();
+            if (!hasPermissionForSub(sender, subName)) {
+                return Collections.emptyList();
+            }
             SubCommand subCommand = subCommands.get(subName);
             if (subCommand != null) {
                 return subCommand.tabComplete(sender, args);
@@ -74,7 +77,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         if (sender.isOp()) return true;
         return switch (sub) {
             case "ping" -> sender.hasPermission("knockbacksync.ping");
-            case "status" -> true;
+            case "status" -> sender.hasPermission("knockbacksync.status.self") || sender.hasPermission("knockbacksync.status.other");
             case "toggle" -> sender.hasPermission("knockbacksync.toggle.global")
                     || sender.hasPermission("knockbacksync.toggle.self")
                     || sender.hasPermission("knockbacksync.toggle.other");
@@ -84,7 +87,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage(ChatColor.GOLD + "=== " + ChatColor.YELLOW + "KnockbackSync Reloaded v1.2" + ChatColor.GOLD + " ===");
+        sender.sendMessage(ChatColor.GOLD + "=== " + ChatColor.YELLOW + "KnockbackSync Reloaded v1.3" + ChatColor.GOLD + " ===");
         sender.sendMessage(ChatColor.YELLOW + "/kbsync ping [player] " + ChatColor.GRAY + "- Check measured & compensated ping");
         sender.sendMessage(ChatColor.YELLOW + "/kbsync status [player] " + ChatColor.GRAY + "- View global & player sync status");
         sender.sendMessage(ChatColor.YELLOW + "/kbsync toggle [player] " + ChatColor.GRAY + "- Toggle globally or for a player");

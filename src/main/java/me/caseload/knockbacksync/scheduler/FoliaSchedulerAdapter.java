@@ -26,7 +26,7 @@ public class FoliaSchedulerAdapter implements SchedulerAdapter {
         try {
             globalSched = (GlobalRegionScheduler) Bukkit.getServer().getClass().getMethod("getGlobalRegionScheduler").invoke(Bukkit.getServer());
             asyncSched = (AsyncScheduler) Bukkit.getServer().getClass().getMethod("getAsyncScheduler").invoke(Bukkit.getServer());
-        } catch (Exception e) {
+        } catch (Throwable e) {
             plugin.getLogger().warning("Failed to initialize Folia scheduler via reflection: " + e.getMessage());
         }
         this.globalScheduler = globalSched;
@@ -35,38 +35,37 @@ public class FoliaSchedulerAdapter implements SchedulerAdapter {
 
     @Override
     public AbstractTaskHandle runTask(Runnable task) {
-        return new AbstractTaskHandle(globalScheduler.run(plugin, scheduledTask -> task.run()));
+        return new FoliaTaskHandle(globalScheduler.run(plugin, scheduledTask -> task.run()));
     }
 
     @Override
     public AbstractTaskHandle runTaskAsynchronously(Runnable task) {
-        return new AbstractTaskHandle(asyncScheduler.runNow(plugin, scheduledTask -> task.run()));
+        return new FoliaTaskHandle(asyncScheduler.runNow(plugin, scheduledTask -> task.run()));
     }
 
     @Override
     public AbstractTaskHandle runTaskLater(Runnable task, long delayTicks) {
         long safeDelay = Math.max(1L, delayTicks);
-        return new AbstractTaskHandle(globalScheduler.runDelayed(plugin, scheduledTask -> task.run(), safeDelay));
+        return new FoliaTaskHandle(globalScheduler.runDelayed(plugin, scheduledTask -> task.run(), safeDelay));
     }
 
     @Override
     public AbstractTaskHandle runTaskTimer(Runnable task, long delayTicks, long periodTicks) {
         long safeDelay = Math.max(1L, delayTicks);
         long safePeriod = Math.max(1L, periodTicks);
-        return new AbstractTaskHandle(globalScheduler.runAtFixedRate(plugin, scheduledTask -> task.run(), safeDelay, safePeriod));
+        return new FoliaTaskHandle(globalScheduler.runAtFixedRate(plugin, scheduledTask -> task.run(), safeDelay, safePeriod));
     }
 
     @Override
     public AbstractTaskHandle runTaskLaterAsynchronously(Runnable task, long delayTicks) {
         long delayMs = Math.max(1L, delayTicks) * 50L;
-        return new AbstractTaskHandle(asyncScheduler.runDelayed(plugin, scheduledTask -> task.run(), delayMs, TimeUnit.MILLISECONDS));
+        return new FoliaTaskHandle(asyncScheduler.runDelayed(plugin, scheduledTask -> task.run(), delayMs, TimeUnit.MILLISECONDS));
     }
 
     @Override
     public AbstractTaskHandle runTaskTimerAsynchronously(Runnable task, long delayTicks, long periodTicks) {
         long delayMs = Math.max(1L, delayTicks) * 50L;
         long periodMs = Math.max(1L, periodTicks) * 50L;
-        return new AbstractTaskHandle(asyncScheduler.runAtFixedRate(plugin, scheduledTask -> task.run(), delayMs, periodMs, TimeUnit.MILLISECONDS));
+        return new FoliaTaskHandle(asyncScheduler.runAtFixedRate(plugin, scheduledTask -> task.run(), delayMs, periodMs, TimeUnit.MILLISECONDS));
     }
 }
-

@@ -52,11 +52,13 @@ public final class MathUtil {
                 return -1;
             }
 
-            remainingDistance -= velocity;
+            // In Minecraft discrete physics, gravity & drag are applied first in the tick,
+            // then position is updated by that velocity.
             velocity = (velocity + gravity) * DRAG;
             if (velocity > TERMINAL_VELOCITY) {
                 velocity = TERMINAL_VELOCITY;
             }
+            remainingDistance -= velocity;
             ticks++;
         }
 
@@ -89,4 +91,3 @@ public final class MathUtil {
         return Math.min(num, max);
     }
 }
-

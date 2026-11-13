@@ -12,6 +12,9 @@ import com.github.retrooper.packetevents.protocol.ConnectionState;
 import com.github.retrooper.packetevents.protocol.player.ClientVersion;
 import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPing;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPipeline;
 import lombok.Getter;
 import lombok.Setter;
 import me.caseload.knockbacksync.KnockbackSync;
@@ -22,17 +25,17 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Getter
 public class PlayerData {
 
     private final Player player;
-    private final User user;
+    private volatile User user;
 
     private final AtomicInteger packetIdGenerator = new AtomicInteger(1);
 
@@ -60,8 +63,8 @@ public class PlayerData {
     @Nullable @Setter
     private Integer lastDamageTicks;
 
-    @Setter @Getter
     private volatile boolean pendingKnockback = false;
+    private volatile long pendingKnockbackExpiry = 0L;
 
     @Setter
     private double gravity = 0.08;
@@ -90,7 +93,28 @@ public class PlayerData {
         if (this.user != null) {
             return this.user;
         }
-        return PacketEvents.getAPI().getPlayerManager().getUser(player);
+        User fetched = PacketEvents.getAPI().getPlayerManager().getUser(player);
+        if (fetched != null) {
+            this.user = fetched;
+        }
+        return fetched;
+    }
+
+    public void setPendingKnockback(boolean pending) {
+        this.pendingKnockback = pending;
+        this.pendingKnockbackExpiry = pending ? System.currentTimeMillis() + 150L : 0L;
+    }
+
+    public boolean isPendingKnockback() {
+        if (!pendingKnockback) {
+            return false;
+        }
+        if (System.currentTimeMillis() > pendingKnockbackExpiry) {
+            this.pendingKnockback = false;
+            this.verticalVelocity = null;
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -169,96 +193,62 @@ public class PlayerData {
         if (u.getConnectionState() != ConnectionState.PLAY) {
             return false;
         }
-        Object channel = u.getChannel();
-        if (channel == null) {
+        Object channelObj = u.getChannel();
+        if (!(channelObj instanceof Channel)) {
             return false;
         }
-        try {
-            if (!PacketEvents.getAPI().getNettyManager().getChannelOperator().isOpen(channel)) {
-                return false;
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            Method isActiveMethod = channel.getClass().getMethod("isActive");
-            Object activeResult = isActiveMethod.invoke(channel);
-            if (activeResult instanceof Boolean && !((Boolean) activeResult)) {
-                return false;
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            Method isWritableMethod = channel.getClass().getMethod("isWritable");
-            Object writableResult = isWritableMethod.invoke(channel);
-            if (writableResult instanceof Boolean && !((Boolean) writableResult)) {
-                return false;
-            }
-        } catch (Throwable ignored) {
-        }
-        return true;
-    }
-
-    private static volatile boolean nettyReflectionInitialized = false;
-    private static Method pipelineMethod;
-    private static Method contextMethod;
-    private static Method voidPromiseMethod;
-    private static Method writeAndFlushMethod;
-
-    private static void initNettyReflection(Object channel) {
-        if (nettyReflectionInitialized || channel == null) return;
-        synchronized (PlayerData.class) {
-            if (nettyReflectionInitialized) return;
-            try {
-                pipelineMethod = channel.getClass().getMethod("pipeline");
-                Object pipeline = pipelineMethod.invoke(channel);
-                contextMethod = pipeline.getClass().getMethod("context", String.class);
-                Object ctx = contextMethod.invoke(pipeline, PacketEvents.ENCODER_NAME);
-                if (ctx != null) {
-                    voidPromiseMethod = ctx.getClass().getMethod("voidPromise");
-                    for (Method m : ctx.getClass().getMethods()) {
-                        if (m.getName().equals("writeAndFlush") && m.getParameterCount() == 2) {
-                            writeAndFlushMethod = m;
-                            break;
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {
-            } finally {
-                nettyReflectionInitialized = true;
-            }
-        }
+        Channel channel = (Channel) channelObj;
+        return channel.isOpen() && channel.isActive() && channel.isWritable();
     }
 
     /**
-     * Sends packet using Netty's voidPromise.
-     * When voidPromise is used, Netty skips ChannelOutboundBuffer.failFlushed error logging entirely,
-     * ensuring that no StacklessClosedChannelException warnings appear when a socket drops.
+     * Sends packet using Netty's voidPromise and direct channel pipeline writing.
+     * Transforming WrapperPlayServerPing into raw packet ByteBuf/NMS and passing Netty's voidPromise
+     * ensures Netty's ChannelOutboundBuffer.failFlushed releases buffers silently on socket closure
+     * without producing StacklessClosedChannelException warnings in server logs.
      */
-    private void sendPingPacketSafely(WrapperPlayServerPing packet) {
+    private void sendPingPacketSafely(@NotNull WrapperPlayServerPing packet) {
         User u = getUser();
         if (u == null) return;
 
-        Object channel = u.getChannel();
-        if (channel == null) return;
-
-        initNettyReflection(channel);
-
-        if (pipelineMethod != null && contextMethod != null && voidPromiseMethod != null && writeAndFlushMethod != null) {
+        Object channelObj = u.getChannel();
+        if (!(channelObj instanceof Channel)) {
             try {
-                Object pipeline = pipelineMethod.invoke(channel);
-                Object ctx = contextMethod.invoke(pipeline, PacketEvents.ENCODER_NAME);
-                if (ctx != null) {
-                    Object voidPromise = voidPromiseMethod.invoke(ctx);
-                    writeAndFlushMethod.invoke(ctx, packet, voidPromise);
-                    return;
-                }
+                u.sendPacketSilently(packet);
             } catch (Throwable ignored) {
             }
+            return;
+        }
+
+        Channel channel = (Channel) channelObj;
+        if (!channel.isOpen() || !channel.isActive()) {
+            return;
         }
 
         try {
-            u.sendPacketSilently(packet);
+            // 1. Transform wrapper into raw NMS / ByteBuf packet objects
+            Object[] rawPackets = PacketEvents.getAPI().getProtocolManager().transformWrappers(packet, channel, true);
+            if (rawPackets == null || rawPackets.length == 0) {
+                return;
+            }
+
+            // 2. Locate PacketEvents encoder context in the Netty pipeline
+            ChannelPipeline pipeline = channel.pipeline();
+            ChannelHandlerContext ctx = pipeline.context(PacketEvents.ENCODER_NAME);
+
+            if (ctx != null) {
+                for (Object rawPacket : rawPackets) {
+                    if (rawPacket == null) continue;
+                    ctx.writeAndFlush(rawPacket, ctx.voidPromise());
+                }
+            } else {
+                for (Object rawPacket : rawPackets) {
+                    if (rawPacket == null) continue;
+                    channel.writeAndFlush(rawPacket, channel.voidPromise());
+                }
+            }
         } catch (Throwable ignored) {
+            // Channel may have closed concurrently; safely ignore
         }
     }
 
@@ -361,9 +351,17 @@ public class PlayerData {
      * based on vertical trajectory, distance to ground, and network latency.
      */
     public boolean isOnGround(double currentVerticalVelocity) {
+        if (player.isGliding() || player.isSwimming() || player.isRiptiding()) {
+            return false;
+        }
+        if (player.hasPotionEffect(PotionEffectType.LEVITATION) || player.hasPotionEffect(PotionEffectType.SLOW_FALLING)) {
+            return false;
+        }
+
         Material material = player.getLocation().getBlock().getType();
-        if (player.isGliding() || material == Material.WATER || material == Material.LAVA
-                || material == Material.COBWEB || material == Material.SCAFFOLDING) {
+        if (material == Material.WATER || material == Material.LAVA
+                || material == Material.COBWEB || material == Material.SCAFFOLDING
+                || material == Material.BUBBLE_COLUMN || material == Material.POWDER_SNOW) {
             return false;
         }
 
@@ -456,8 +454,9 @@ public class PlayerData {
     }
 
     public ClientVersion getClientVersion() {
-        if (user != null) {
-            ClientVersion ver = user.getClientVersion();
+        User u = getUser();
+        if (u != null) {
+            ClientVersion ver = u.getClientVersion();
             if (ver != null) return ver;
         }
         try {

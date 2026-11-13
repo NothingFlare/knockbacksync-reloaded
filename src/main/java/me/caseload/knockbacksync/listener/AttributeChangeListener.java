@@ -44,8 +44,13 @@ public class AttributeChangeListener extends PacketListenerAbstract {
 
         WrapperPlayServerUpdateAttributes packet = new WrapperPlayServerUpdateAttributes(event);
 
-        for (WrapperPlayServerUpdateAttributes.Property property : packet.getProperties()) {
-            if (property.getAttribute().equals(Attributes.GENERIC_GRAVITY)) {
+        List<WrapperPlayServerUpdateAttributes.Property> properties = packet.getProperties();
+        if (properties == null) {
+            return;
+        }
+
+        for (WrapperPlayServerUpdateAttributes.Property property : properties) {
+            if (property != null && property.getAttribute() != null && property.getAttribute().equals(Attributes.GENERIC_GRAVITY)) {
                 double computedGravity = calculateValueWithModifiers(property);
                 if (playerData.getClientVersion().isNewerThanOrEquals(ClientVersion.V_1_20_5)) {
                     playerData.setGravity(computedGravity);
@@ -84,4 +89,3 @@ public class AttributeChangeListener extends PacketListenerAbstract {
         return MathUtil.clamp(newValue, MIN_GRAVITY, MAX_GRAVITY);
     }
 }
-
